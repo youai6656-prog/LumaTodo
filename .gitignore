@@ -1,0 +1,11 @@
+.build/
+DerivedData/
+xcuserdata/
+.DS_Store
+Release/
+
+# Keep local SwiftData databases and journals out of source control.
+*.store
+*.store-shm
+*.store-wal
+!Tests/Fixtures/LumaTodo-1.1.store
