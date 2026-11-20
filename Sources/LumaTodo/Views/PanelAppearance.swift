@@ -18,8 +18,10 @@ struct PanelAppearance: DynamicProperty {
         values.glass && !values.opaque && !reduceTransparency
     }
 
-    func animation(_ values: PreferencesValues) -> Animation? {
-        values.animations && !reduceMotion ? .spring(duration: 0.24, bounce: 0) : nil
+    func allowsMotion(_ values: PreferencesValues) -> Bool { values.animations && !reduceMotion }
+
+    func animation(_ values: PreferencesValues, intensity: MotionIntensity = .standard) -> Animation? {
+        allowsMotion(values) ? Motion.list(intensity) : nil
     }
 }
 

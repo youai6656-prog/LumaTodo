@@ -192,6 +192,51 @@ struct AttachmentTests {
         #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
         #expect(!FileManager.default.fileExists(atPath: interruptedURL.path))
     }
+
+    @MainActor @Test func undoDeletionRestoresReminderIdentityAndSharedAttachments() throws {
+        try withStore { store in
+            defer { store.finalizeDeletion() }
+            let directory = try scratchDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let source = directory.appending(path: "reading.txt")
+            let bytes = Data("course materials".utf8)
+            try bytes.write(to: source)
+            let database = try #require(store.container.configurations.first?.url)
+            let staged = try FileStorageService(databaseURL: database).stage(file: source)
+            let now = instant("2026-11-19T08:00:00Z")
+            var draft = TaskDraft(title: "Daily")
+            draft.notes = "Notes"
+            draft.due = now.addingTimeInterval(600)
+            draft.hasTime = true
+            draft.leads = [5]
+            draft.rule = RepeatRule(kind: .daily)
+            let series = try store.save(draft, attachments: .init(adding: [staged]), now: now, timeZone: utc)
+            let history = try store.complete(series, now: now)
+            try store.snooze(series, occurrence: try #require(series.due), minutes: 5, now: now)
+            let id = series.id
+            let info = try #require(store.attachments(for: id).first)
+            let managed = try store.attachmentManager.url(for: info)
+            let plan = NotificationPlan.make(tasks: store.items, now: now, limit: 60).events.map(\.id)
+
+            try store.deleteForUndo(series)
+            try store.delete(history)
+            #expect(store.item(id) == nil && store.attachments(for: id).isEmpty)
+            #expect(NotificationPlan.make(tasks: store.items, now: now, limit: 60).events.isEmpty)
+            #expect(try Data(contentsOf: managed) == bytes)
+
+            try store.undoDeletion(id)
+            #expect(store.item(id)?.notes == "Notes")
+            #expect(store.attachments(for: id) == [info])
+            #expect(NotificationPlan.make(tasks: store.items, now: now, limit: 60).events.map(\.id) == plan)
+            #expect(try Data(contentsOf: managed) == bytes)
+            #expect(throws: TaskError.invalidOccurrence) { try store.undoDeletion(id) }
+
+            try store.deleteForUndo(try #require(store.item(id)))
+            store.finalizeDeletion()
+            #expect(!FileManager.default.fileExists(atPath: managed.path))
+            #expect(throws: TaskError.invalidOccurrence) { try store.undoDeletion(id) }
+        }
+    }
 }
 
 private let onePixelPNG = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+tmV0AAAAASUVORK5CYII=")!

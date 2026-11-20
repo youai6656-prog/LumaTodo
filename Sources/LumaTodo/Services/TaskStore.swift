@@ -13,6 +13,7 @@ final class TaskStore {
     @ObservationIgnored private var byID: [UUID: TaskItem] = [:]
     @ObservationIgnored private var attachmentsByTask: [UUID: [Attachment]] = [:]
     @ObservationIgnored private var referencesByPath: [String: Int] = [:]
+    @ObservationIgnored private var pendingDeletion: (task: TaskItem, attachments: [AttachmentInfo])?
     @ObservationIgnored var onChange: (() -> Void)?
 
     init(url: URL) throws {
@@ -164,9 +165,39 @@ final class TaskStore {
     }
 
     func delete(_ task: TaskItem) throws {
+        guard byID[task.id] === task else { throw TaskError.invalidOccurrence }
         let id = task.id
         context.delete(task)
         try commit(removing: (id, task), removingAttachments: attachmentsByTask[id, default: []])
+    }
+
+    func deleteForUndo(_ task: TaskItem) throws {
+        guard byID[task.id] === task else { throw TaskError.invalidOccurrence }
+        let snapshot = task.detachedCopy()
+        let records = attachmentsByTask[task.id, default: []]
+        let attachments = records.map(\.info)
+        context.delete(task)
+        try commit(removing: (snapshot.id, task), removingAttachments: records, keepingRemovedFiles: true)
+        finalizeDeletion()
+        pendingDeletion = (snapshot, attachments)
+    }
+
+    func undoDeletion(_ id: UUID) throws {
+        guard let deletion = pendingDeletion, deletion.task.id == id, byID[id] == nil else {
+            throw TaskError.invalidOccurrence
+        }
+        // Keep a detached copy available for retry if SwiftData rolls back the insert.
+        let task = deletion.task.detachedCopy()
+        context.insert(task)
+        let attachments = deletion.attachments.map { Attachment(info: $0, taskID: id) }
+        try commit(inserting: task, addingAttachments: attachments)
+        finalizeDeletion()
+    }
+
+    func finalizeDeletion() {
+        guard let deletion = pendingDeletion else { return }
+        pendingDeletion = nil
+        for info in deletion.attachments { releaseFile(info) }
     }
 
     func snooze(_ task: TaskItem, occurrence: Date, minutes: Int, now: Date = .now,
@@ -189,7 +220,8 @@ final class TaskStore {
     }
 
     private func commit(inserting newItem: TaskItem? = nil, removing removed: (UUID, TaskItem)? = nil,
-                        addingAttachments added: [Attachment] = [], removingAttachments deleted: [Attachment] = []) throws {
+                        addingAttachments added: [Attachment] = [], removingAttachments deleted: [Attachment] = [],
+                        keepingRemovedFiles: Bool = false) throws {
         let removedRecords = deleted.map { (owner: $0.taskID, info: $0.info, model: $0) }
         for record in deleted { context.delete(record) }
         for record in added { context.insert(record) }
@@ -214,15 +246,19 @@ final class TaskStore {
         for record in removedRecords {
             attachmentsByTask[record.owner]?.removeAll { $0 === record.model }
             if attachmentsByTask[record.owner]?.isEmpty == true { attachmentsByTask.removeValue(forKey: record.owner) }
-            let path = record.info.relativePath
-            if let count = referencesByPath[path], count > 1 {
-                referencesByPath[path] = count - 1
-            } else {
-                referencesByPath.removeValue(forKey: path)
-                attachmentManager.removeManaged(record.info)
-            }
+            if !keepingRemovedFiles { releaseFile(record.info) }
         }
         onChange?()
+    }
+
+    private func releaseFile(_ info: AttachmentInfo) {
+        let path = info.relativePath
+        if let count = referencesByPath[path], count > 1 {
+            referencesByPath[path] = count - 1
+        } else {
+            referencesByPath.removeValue(forKey: path)
+            attachmentManager.removeManaged(info)
+        }
     }
 }
 

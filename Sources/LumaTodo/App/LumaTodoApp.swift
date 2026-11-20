@@ -30,7 +30,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             state.showWindow = { [weak self] in self?.window?.show() }
             state.tuckWindow = { [weak window] in window?.tuck() }
             state.onLayoutChange = { [weak window] height, editing in window?.updateLayout(height: height, editing: editing) }
-            state.hideWindow = { [weak self] in self?.window?.hide() }
             state.revealEditor = { [weak window] in window?.revealEditor() }
             state.showSettings = { [weak self] in self?.window?.openSettings() }
             state.setMiniWindow = { [weak self] in self?.window?.setMini($0) }
@@ -54,7 +53,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         updateStatusItem()
         state.shortcut.register(state.preferences.values.shortcut)
         statusMenu.delegate = self
-        window?.show()
+        window?.restoreAtLaunch()
         refresh()
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(self, selector: #selector(refresh), name: NSWorkspace.didWakeNotification, object: nil)
@@ -91,6 +90,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         window?.show()
         return false
     }
+
+    func applicationWillTerminate(_ notification: Notification) { state?.dismissUndo() }
 
     private func preferencesChanged(from old: PreferencesValues) {
         guard let state else { return }
@@ -174,7 +175,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         let w = state.words
         let visible = window?.isVisible == true
         menu.removeAllItems()
-        menu.addItem(makeItem(visible ? w("显示／隐藏待办", "Show / Hide Tasks") : w("显示待办", "Show Tasks"),
+        menu.addItem(makeItem(visible ? w("收起／展开待办", "Tuck / Expand Tasks") : w("显示待办", "Show Tasks"),
                               #selector(toggleWindow)))
         menu.addItem(makeItem(w("新建任务", "New Task"), #selector(newTask)))
         menu.addItem(.separator())
@@ -199,7 +200,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         let tasks = NSMenu(title: w("任务", "Tasks"))
         tasks.addItem(makeItem(w("新建任务", "New Task"), #selector(newTask), "n"))
         tasks.addItem(makeItem(w("查找任务", "Find Tasks"), #selector(findTasks), "f"))
-        tasks.addItem(makeItem(w("显示或隐藏待办", "Show or Hide Tasks"), #selector(toggleWindow), "w"))
+        tasks.addItem(makeItem(w("收起或展开待办", "Tuck or Expand Tasks"), #selector(toggleWindow), "w"))
         let edit = NSMenu(title: w("编辑", "Edit"))
         edit.addItem(makeItem(w("撤销", "Undo"), #selector(undo), "z"))
         for (label, selector, key) in [(w("剪切", "Cut"), "cut:", "x"),
@@ -222,11 +223,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     }
 
     @objc private func undo() {
-        guard !TaskPanel.hasActiveComposition else { return }
+        guard !TaskPanel.hasActiveComposition, state?.dialog == nil else { return }
         if let undoManager = NSApp.keyWindow?.firstResponder?.undoManager, undoManager.canUndo {
             undoManager.undo()
         } else {
-            state?.undoCompletion()
+            state?.undoLastAction()
         }
     }
 

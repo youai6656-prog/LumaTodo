@@ -30,6 +30,26 @@ struct Shortcut: Codable, Equatable {
     var label: String = "T"
 }
 
+enum TuckSide: String, CaseIterable, Identifiable {
+    case nearest, left, right
+    var id: Self { self }
+
+    func label(_ words: Words) -> String {
+        switch self {
+        case .nearest: words("最近的屏幕边缘", "Nearest screen edge")
+        case .left: words("左侧", "Left")
+        case .right: words("右侧", "Right")
+        }
+    }
+}
+
+enum MotionIntensity: String, CaseIterable, Identifiable {
+    case standard, gentle
+    var id: Self { self }
+    var bounce: Double { self == .standard ? 0.10 : 0 }
+    var decoration: CGFloat { self == .standard ? 1 : 0.52 }
+}
+
 struct PreferencesValues: Codable, Equatable {
     var language: AppLanguage = .chinese
     var appearance: AppearanceChoice = .system
@@ -63,9 +83,17 @@ final class Preferences {
     }
     @ObservationIgnored var onChange: ((PreferencesValues) -> Void)?
     @ObservationIgnored let defaults: UserDefaults
+    var tuckSide: TuckSide {
+        didSet { defaults.set(tuckSide.rawValue, forKey: "window.tuckSide") }
+    }
+    var motionIntensity: MotionIntensity {
+        didSet { defaults.set(motionIntensity.rawValue, forKey: "motion.intensity") }
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        tuckSide = defaults.string(forKey: "window.tuckSide").flatMap(TuckSide.init(rawValue:)) ?? .nearest
+        motionIntensity = defaults.string(forKey: "motion.intensity").flatMap(MotionIntensity.init(rawValue:)) ?? .standard
         var loaded = defaults.data(forKey: "preferences.v1")
             .flatMap { try? JSONDecoder().decode(PreferencesValues.self, from: $0) } ?? PreferencesValues()
         if !defaults.bool(forKey: "preferences.fit-height.v2") {

@@ -1,5 +1,12 @@
 import Foundation
 
+struct PanelListMetrics: Equatable {
+    let content: CGFloat
+    let viewport: CGFloat
+    let offset: CGFloat
+    let scrolling: Bool
+}
+
 enum PanelLayout {
     static let minimumWidth: CGFloat = 320
     static let minimumHeight: CGFloat = 244
@@ -32,13 +39,21 @@ enum PanelLayout {
     static func height(sections: [SectionSize], searching: Bool = false, notice: Bool = false,
                        undo: Bool = false, limit: CGFloat, available: CGFloat) -> CGFloat {
         let rowsVisible = sections.contains { $0.rows > 0 }
-        let measured = sections.reduce(listInsets) { total, section in
+        let list = max(rowsVisible ? 110 : emptyHeight, listContentHeight(sections: sections))
+        return min(max(minimumHeight, chromeHeight(searching: searching, notice: notice, undo: undo) + list),
+                   max(minimumHeight, limit), available)
+    }
+
+    static func listContentHeight(sections: [SectionSize]) -> CGFloat {
+        guard !sections.isEmpty else { return emptyHeight }
+        return sections.reduce(listInsets) { total, section in
             total + sectionHeight + section.height + rowGap * CGFloat(section.rows)
         } + CGFloat(max(0, sections.count - 1)) * sectionGap
-        let list = max(rowsVisible ? 110 : emptyHeight, measured)
-        let chrome = headerHeight + footerHeight + (searching ? searchHeight : 0)
+    }
+
+    static func chromeHeight(searching: Bool, notice: Bool, undo: Bool) -> CGFloat {
+        headerHeight + footerHeight + (searching ? searchHeight : 0)
             + (notice ? noticeHeight : 0) + (undo ? undoHeight : 0)
-        return min(max(minimumHeight, chrome + list), max(minimumHeight, limit), available)
     }
 
     static func editorSize(browsingWidth: CGFloat, contentHeight: CGFloat) -> CGSize {
@@ -142,8 +157,8 @@ struct PanelListing {
             let due = row.groupingDue
             let group = TaskGroup.group(isCompleted: row.isCompleted, due: due, now: now, calendar: calendar)
             groups[group, default: []].append(row)
-            if let date = row.completedAt {
-                if calendar.isDate(date, inSameDayAs: now) { completed += 1 }
+            if row.isCompleted {
+                if let due, calendar.isDate(due, inSameDayAs: now) { completed += 1 }
             } else {
                 if let current = featured {
                     if row.precedes(current, by: .priority) { featured = row }

@@ -309,6 +309,32 @@ final class TaskItem: PersistentModel, Identifiable {
 
     var hasReminders: Bool { !leads.isEmpty || !independentReminders.isEmpty }
 
+    // Copy persisted fields verbatim, including the recurrence cursor and legacy reminder data.
+    func detachedCopy() -> TaskItem {
+        let copy = TaskItem(title: title, now: createdAt)
+        copy.id = id
+        copy.notes = notes
+        copy.tags = tags
+        copy.updatedAt = updatedAt
+        copy.due = due
+        copy.hasTime = hasTime
+        copy.completedAt = completedAt
+        copy.priorityValue = priorityValue
+        copy.leadMinutes = leadMinutes
+        copy.repeatType = repeatType
+        copy.repeatInterval = repeatInterval
+        copy.repeatAnchor = repeatAnchor
+        copy.timeZoneID = timeZoneID
+        copy.scheduleID = scheduleID
+        copy.sortIndex = sortIndex
+        copy.snoozeData = snoozeData
+        copy.originID = originID
+        copy.originScheduleID = originScheduleID
+        copy.previousDue = previousDue
+        copy.advancedDue = advancedDue
+        return copy
+    }
+
     var snoozes: [Snooze] {
         get { reminderExtras.snoozes }
         set {

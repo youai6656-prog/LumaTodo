@@ -48,6 +48,11 @@ struct SettingsView: View {
                        isOn: $preferences.values.opaque)
                 Toggle(w("紧凑任务列表", "Compact task list"), isOn: $preferences.values.compact)
                 Toggle(w("界面与窗口动画", "Interface and window animations"), isOn: $preferences.values.animations)
+                Picker(w("动画强度", "Motion intensity"), selection: $preferences.motionIntensity) {
+                    Text(w("标准", "Standard")).tag(MotionIntensity.standard)
+                    Text(w("柔和", "Gentle")).tag(MotionIntensity.gentle)
+                }
+                .disabled(!preferences.values.animations)
             }
         }
         .formStyle(.grouped)
@@ -61,6 +66,9 @@ struct SettingsView: View {
                 Toggle(w("吸附屏幕左右边缘", "Snap to left or right screen edge"), isOn: $preferences.values.snapToEdge)
                 Toggle(w("贴边后收起为侧边按钮", "Collapse to a tab after snapping"), isOn: $preferences.values.autoHide)
                     .disabled(!state.preferences.values.snapToEdge)
+                Picker(w("收起方向", "Tuck side"), selection: $preferences.tuckSide) {
+                    ForEach(TuckSide.allCases) { side in Text(side.label(w)).tag(side) }
+                }
                 Toggle(w("记住窗口位置与尺寸", "Remember window position and size"), isOn: $preferences.values.rememberPosition)
             }
             Section(w("自动尺寸", "Automatic size")) {

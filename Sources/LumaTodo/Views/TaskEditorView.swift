@@ -8,8 +8,6 @@ struct TaskEditorView: View {
     @State private var originalDraft: TaskDraft
     @State private var attachments: TaskAttachmentDraft
     @State private var titleFocused = false
-    @State private var showingDelete = false
-    @State private var showingDiscard = false
     @State private var customLead = ""
     @State private var validation: String?
     private var appearance = PanelAppearance()
@@ -81,12 +79,6 @@ struct TaskEditorView: View {
             if state.editor?.id != sessionID { attachments.discard() }
         }
         .onExitCommand(perform: requestClose)
-        .alert(w("放弃未保存的更改？", "Discard unsaved changes?"), isPresented: $showingDiscard) {
-            Button(w("继续编辑", "Keep Editing"), role: .cancel) {}
-            Button(w("放弃更改", "Discard Changes"), role: .destructive, action: discardAndClose)
-        } message: {
-            Text(w("本次编辑和新添加的附件将被放弃。", "Your edits and newly imported attachments will be discarded."))
-        }
     }
 
     private var separator: some View {
@@ -106,24 +98,17 @@ struct TaskEditorView: View {
             Text(taskID == nil ? w("新建任务", "New task") : w("编辑任务", "Edit task"))
                 .font(.system(size: 17, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
-                .background(WindowGrip())
+                .overlay(WindowGrip())
             Spacer()
-            if let taskID, let task = state.store.item(taskID) {
-                Button(role: .destructive) { showingDelete = true } label: {
+            if let taskID, state.store.item(taskID) != nil {
+                Button(role: .destructive) { state.requestDeletion(taskID) } label: {
                     Image(systemName: "trash").font(.system(size: 12)).frame(width: 23, height: 23)
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(appearance.secondary)
                 .accessibilityLabel(w("删除任务", "Delete task"))
+                .help(w("删除任务", "Delete task"))
                 .disabled(attachments.importing)
-                .confirmationDialog(w("删除这项任务和关联附件？", "Delete this task and its attachments?"),
-                                    isPresented: $showingDelete, titleVisibility: .visible) {
-                    Button(w("删除任务", "Delete task"), role: .destructive) {
-                        state.delete(task)
-                        if state.store.item(taskID) == nil { discardAndClose() }
-                    }
-                    Button(w("取消", "Cancel"), role: .cancel) {}
-                }
             }
         }
         .padding(.horizontal, 13)
@@ -159,8 +144,8 @@ struct TaskEditorView: View {
             .background(sectionFill, in: .rect(cornerRadius: 9))
             .overlay {
                 RoundedRectangle(cornerRadius: 9)
-                    .strokeBorder(titleFocused ? appearance.accent.opacity(0.76) : appearance.line,
-                                  lineWidth: titleFocused ? 1.15 : 0.65)
+                    .strokeBorder(titleFocused && state.dialog == nil ? appearance.accent.opacity(0.76) : appearance.line,
+                                  lineWidth: titleFocused && state.dialog == nil ? 1.15 : 0.65)
                     .allowsHitTesting(false)
             }
     }
@@ -438,7 +423,7 @@ struct TaskEditorView: View {
 
     private func requestClose() {
         guard !TaskPanel.hasActiveComposition else { return }
-        if isDirty { showingDiscard = true }
+        if isDirty { state.confirmsDiscard = true }
         else { discardAndClose() }
     }
 
